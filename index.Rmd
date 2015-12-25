@@ -1,0 +1,196 @@
+---
+title       : Project for Developing Data Products Coursera Course
+subtitle    : Your chances of surviving at the Titanic disaster
+author      : Irene Monfalcone
+job         : 
+framework   : io2012        # {io2012, html5slides, shower, dzslides, ...}
+highlighter : highlight.js  # {highlight.js, prettify, highlight}
+hitheme     : tomorrow      # 
+widgets     : []            # {mathjax, quiz, bootstrap}
+mode        : selfcontained # {standalone, draft}
+knit        : slidify::knit2slides
+---
+```{r, echo=FALSE, warning=FALSE}
+  
+library(sqldf)
+
+dfTitanic<-data.frame(Titanic)
+
+titanicall<-sqldf('select distinct 
+                  Class,
+                  Sex,
+                  Age,
+                  "All" as Survived,
+                  Sum(Freq) as Freq from dfTitanic
+                  group by Class,Sex,Age')
+
+titanicsurvrmd<-sqldf('select distinct * from dfTitanic where survived = "Yes"')
+titanicnotsurvrmd<-sqldf('select distinct * from dfTitanic where survived = "No"')
+
+titanicpercrmd<-sqldf('select distinct a.*, 
+                      b.Freq as NrSurvived, 
+                      b.Freq/a.Freq as SurvivalRate, 
+                      c.Freq as NrNotSurvived, 
+                      c.Freq/a.Freq as NotSurvivalRate
+                      from titanicall a 
+                      left join titanicsurvrmd b  
+                      on a.Class=b.Class
+                      and a.Sex=b.Sex 
+                      and a.Age=b.Age
+                      left join titanicnotsurvrmd c 
+                      on a.Class=c.Class
+                      and a.Sex=c.Sex 
+                      and a.Age=c.Age
+                      where b.Freq <> 0
+                      group by a.Class,a.Sex,a.Age
+                      ')
+
+titanicvert<-sqldf('select distinct 
+                   Class,
+                   Sex,
+                   Age,
+                   NrSurvived,
+                   0 as NrNotSurvived,
+                   SurvivalRate as SurvivalRate,
+                   "Yes" as survived
+                   from titanicpercrmd 
+                   where NrSurvived >0
+                   union
+                   select distinct 
+                   Class,
+                   Sex,
+                   Age,
+                   0 as NrSurvived,
+                   NrNotSurvived,
+                   NotSurvivalRate as SurvivalRate,
+                   "No" as survived
+                   from titanicpercrmd
+                   where NrNotSurvived >0
+                   ')
+
+SurvivalRate<-sqldf(' 
+                    select 
+                    TotSurvived/Tot as SurvivalRate,
+                    TotNotSurvived/Tot as NotSurvivalRate
+                    from
+                    (select sum(NrSurvived) as TotSurvived,
+                    sum(NrNotSurvived) as TotNotSurvived,
+                    sum(NrSurvived)+sum(NrNotSurvived) as Tot
+                    from
+                    titanicvert) as tt
+                    ')
+
+SurvivalRateSex<-sqldf('select 
+                       Sex,
+                       TotSurvived/Tot as SurvivalRate
+                       from
+                       (select Sex,
+                       sum(NrSurvived) as TotSurvived,
+                       sum(NrNotSurvived) as TotNotSurvived,
+                       sum(NrSurvived)+sum(NrNotSurvived) as Tot
+                       from
+                       titanicvert group by Sex) as tt Group by Sex
+                       ')
+
+SurvivalRateAge<-sqldf('select 
+                       Age,
+                       TotSurvived/Tot as SurvivalRate
+                       from
+                       (select Age,
+                       sum(NrSurvived) as TotSurvived,
+                       sum(NrNotSurvived) as TotNotSurvived,
+                       sum(NrSurvived)+sum(NrNotSurvived) as Tot
+                       from
+                       titanicvert group by Age) as tt Group by Age
+                       ')
+                           
+SurvivalRateClass<-sqldf('select 
+                         Class,
+                         TotSurvived/Tot as SurvivalRate
+                         from
+                         (select Class,
+                         sum(NrSurvived) as TotSurvived,
+                         sum(NrNotSurvived) as TotNotSurvived,
+                         sum(NrSurvived)+sum(NrNotSurvived) as Tot
+                         from
+                         titanicvert group by Class) as tt Group by Class')       
+
+PieSurvivalRate<-as.numeric(SurvivalRate$SurvivalRate)*100
+PieNotSurvivalRate<-as.numeric(SurvivalRate$NotSurvivalRate)*100
+
+SurvivalRate$SurvivalRate<-paste(round(100*as.numeric(SurvivalRate$SurvivalRate),2), "%", sep="")
+SurvivalRate$NotSurvivalRate<-paste(round(100*as.numeric(SurvivalRate$NotSurvivalRate),2), "%", sep="")
+SurvivalRateSex$SurvivalRate<-paste(round(100*as.numeric(SurvivalRateSex$SurvivalRate),2), "%", sep="")
+SurvivalRateAge$SurvivalRate<-paste(round(100*as.numeric(SurvivalRateAge$SurvivalRate),2), "%", sep="")
+SurvivalRateClass$SurvivalRate<-paste(round(100*as.numeric(SurvivalRateClass$SurvivalRate),2), "%", sep="")
+
+```
+Overview
+================
+
+This presentation has been created as a course project in the Developing Data Products course by Coursera
+
+Project Summary
+================
+The idea was to develop a very simple App to predict, the chances of surviving the Titanic disaster based on a series of evaluations on values present in the R dataset "Titanic".
+This data set provides information on the fate of passengers on the fatal maiden voyage of the ocean liner ‘Titanic’, summarized by economic status (class), sex, age and survival.
+For do this we use:
+
+1. The R dataset "Titanic";
+2. The Age field in Titanic is "Adult" or "Child". For the App Usability, the dataset was modified and Age was considered: MinAge=0 and MaxAge=16 for Age="Child"; MinAge=17 and MaxAge=100 for Age="Adult";
+3. The UI allows the user to indicate their Age, Sex and in which Class their journey on the Titanic would be.
+4. Based on this information, the application finds the Survival rate in the modified dataset and return: the selected fields; the Survival Rate
+
+---
+Some information about Titanic Survival Probability 1/2
+========================================================
+In the Titanic dataset we discovered that the general probability to survive the Titanic disaster was:
+
+```{r, echo=FALSE}
+
+SurvivalRate
+
+slices <- c(PieNotSurvivalRate, PieSurvivalRate)
+lbls <- c("Not Survived", "Survived")
+pct <- round(slices/sum(slices)*100)
+lbls <- paste(lbls, pct) # add percents to labels
+lbls <- paste(lbls,"%",sep="") # ad % to labels
+pie(slices,labels = lbls, col=rainbow(length(lbls)), 
+    main="Pie Chart of probability to survive at the Titanic disaster")
+
+```
+
+---
+Some information about Titanic Survival Probability 2/2
+========================================================
+Grouped by Sex the survival probability was:
+
+```{r, echo=FALSE}
+
+SurvivalRateSex
+
+```
+
+Grouped by Age the survival probability was:
+
+```{r, echo=FALSE}
+
+SurvivalRateAge
+
+```
+Grouped by Class the survival probability was:
+
+```{r, echo=FALSE}
+
+SurvivalRateClass
+
+```
+
+---
+Application location
+=====================
+The application may be found at:
+"https://irek978.shinyapps.io/TitanicSurvival"
+
+The code for the application and the project my be found at:
+"https://github.com/irek978/TitanicSurvival"
